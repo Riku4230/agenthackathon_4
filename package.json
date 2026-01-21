@@ -1,0 +1,28 @@
+{
+  "name": "meet-artifact-generator",
+  "version": "1.0.0",
+  "description": "AI-powered UI generation from Google Meet conversations",
+  "private": true,
+  "scripts": {
+    "install:all": "npm run install:extension && npm run install:backend && npm run install:frontend",
+    "install:extension": "cd chrome-extension && npm install",
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "build:extension": "cd chrome-extension && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "build:all": "npm run build:extension && npm run build:backend && npm run build:frontend",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "clean": "rm -rf chrome-extension/dist backend/dist frontend/.next"
+  },
+  "keywords": [
+    "google-meet",
+    "ai",
+    "gemini",
+    "ui-generation",
+    "chrome-extension"
+  ],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,84 @@
+.meet-artifact-container {
+  display: flex;
+  align-items: center;
+  margin-left: 8px;
+}
+
+.meet-artifact-container.fixed {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 10000;
+}
+
+.meet-artifact-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+}
+
+.meet-artifact-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+}
+
+.meet-artifact-button:active {
+  transform: translateY(0);
+}
+
+.meet-artifact-button.active {
+  background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+  box-shadow: 0 2px 8px rgba(245, 87, 108, 0.4);
+}
+
+.meet-artifact-button.active:hover {
+  box-shadow: 0 4px 12px rgba(245, 87, 108, 0.5);
+}
+
+.meet-artifact-button svg {
+  flex-shrink: 0;
+}
+
+.meet-artifact-notification {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  z-index: 10001;
+  animation: slideIn 0.3s ease;
+}
+
+.meet-artifact-notification.error {
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fca5a5;
+}
+
+.meet-artifact-notification.success {
+  background: #dcfce7;
+  color: #16a34a;
+  border: 1px solid #86efac;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
