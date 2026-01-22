@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenAI } from '@google/genai';
 import type { Requirement } from '../types/index.js';
 
 const CODE_GENERATION_PROMPT = `You are an expert React developer. Generate a complete, functional React component based on the following requirements.
@@ -19,14 +19,10 @@ Guidelines:
 Output ONLY the React component code, starting with imports and ending with the export. Do not include any markdown formatting, explanations, or code blocks - just the raw TypeScript/React code.`;
 
 export class CodeGenerator {
-  private genAI: GoogleGenerativeAI;
-  private model;
+  private ai: GoogleGenAI;
 
   constructor(apiKey: string) {
-    this.genAI = new GoogleGenerativeAI(apiKey);
-    this.model = this.genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-    });
+    this.ai = new GoogleGenAI({ apiKey });
   }
 
   async generateCode(
@@ -42,11 +38,14 @@ export class CodeGenerator {
     try {
       if (onChunk) {
         // Streaming generation
-        const result = await this.model.generateContentStream(prompt);
-        let fullCode = '';
+        const response = await this.ai.models.generateContentStream({
+          model: 'gemini-2.0-flash',
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        });
 
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
+        let fullCode = '';
+        for await (const chunk of response) {
+          const text = chunk.text || '';
           fullCode += text;
           onChunk(text);
         }
@@ -54,9 +53,12 @@ export class CodeGenerator {
         return this.cleanCode(fullCode);
       } else {
         // Non-streaming generation
-        const result = await this.model.generateContent(prompt);
-        const response = result.response;
-        return this.cleanCode(response.text());
+        const response = await this.ai.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        });
+
+        return this.cleanCode(response.text || '');
       }
     } catch (error) {
       console.error('[CodeGenerator] Error generating code:', error);
@@ -88,19 +90,26 @@ Output ONLY the React component code, starting with imports and ending with the 
 
     try {
       if (onChunk) {
-        const result = await this.model.generateContentStream(prompt);
-        let fullCode = '';
+        const response = await this.ai.models.generateContentStream({
+          model: 'gemini-2.0-flash',
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        });
 
-        for await (const chunk of result.stream) {
-          const text = chunk.text();
+        let fullCode = '';
+        for await (const chunk of response) {
+          const text = chunk.text || '';
           fullCode += text;
           onChunk(text);
         }
 
         return this.cleanCode(fullCode);
       } else {
-        const result = await this.model.generateContent(prompt);
-        return this.cleanCode(result.response.text());
+        const response = await this.ai.models.generateContent({
+          model: 'gemini-2.0-flash',
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        });
+
+        return this.cleanCode(response.text || '');
       }
     } catch (error) {
       console.error('[CodeGenerator] Error generating code:', error);

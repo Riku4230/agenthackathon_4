@@ -1,12 +1,11 @@
+import { io, Socket } from 'socket.io-client';
+
 type EventCallback = (event: string, data: unknown) => void;
 
 export class WebSocketClient {
-  private ws: WebSocket | null = null;
+  private socket: Socket | null = null;
   private url: string;
   private messageCallbacks: EventCallback[] = [];
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000;
 
   constructor(url: string) {
     this.url = url;
@@ -15,52 +14,63 @@ export class WebSocketClient {
   connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.url);
+        this.socket = io(this.url, {
+          transports: ['websocket', 'polling'],
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+        });
 
-        this.ws.onopen = () => {
+        this.socket.on('connect', () => {
           console.log('[WebSocket] Connected to backend');
-          this.reconnectAttempts = 0;
           resolve();
-        };
+        });
 
-        this.ws.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            this.handleMessage(message);
-          } catch (error) {
-            console.error('[WebSocket] Failed to parse message:', error);
-          }
-        };
+        this.socket.on('connect_error', (error) => {
+          console.error('[WebSocket] Connection error:', error);
+          reject(error);
+        });
 
-        this.ws.onerror = (error) => {
-          console.error('[WebSocket] Error:', error);
-        };
+        this.socket.on('disconnect', (reason) => {
+          console.log('[WebSocket] Connection closed:', reason);
+        });
 
-        this.ws.onclose = () => {
-          console.log('[WebSocket] Connection closed');
-          this.attemptReconnect();
-        };
+        // Listen for backend events
+        this.socket.on('session:connected', (data) => {
+          this.handleMessage('session:connected', data);
+        });
+
+        this.socket.on('transcript:update', (data) => {
+          this.handleMessage('transcript:update', data);
+        });
+
+        this.socket.on('requirement:detected', (data) => {
+          this.handleMessage('requirement:detected', data);
+        });
+
+        this.socket.on('artifact:stream', (data) => {
+          this.handleMessage('artifact:stream', data);
+        });
+
+        this.socket.on('artifact:update', (data) => {
+          this.handleMessage('artifact:update', data);
+        });
+
+        this.socket.on('error', (data) => {
+          this.handleMessage('error', data);
+        });
+
+        this.socket.on('gemini:disconnected', () => {
+          this.handleMessage('gemini:disconnected', {});
+        });
       } catch (error) {
         reject(error);
       }
     });
   }
 
-  private attemptReconnect(): void {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      console.log(`[WebSocket] Attempting reconnect ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-      setTimeout(() => {
-        this.connect().catch(() => {
-          // Will retry on next attempt
-        });
-      }, this.reconnectDelay * this.reconnectAttempts);
-    }
-  }
-
-  private handleMessage(message: { event: string; data: unknown }): void {
+  private handleMessage(event: string, data: unknown): void {
     this.messageCallbacks.forEach((callback) => {
-      callback(message.event, message.data);
+      callback(event, data);
     });
   }
 
@@ -68,40 +78,37 @@ export class WebSocketClient {
     this.messageCallbacks.push(callback);
   }
 
-  private send(event: string, data: unknown): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ event, data }));
-    }
-  }
-
   sendAudioData(data: ArrayBuffer): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      // Send audio data as binary with a type header
-      const header = new TextEncoder().encode('audio:stream');
-      const combined = new Uint8Array(header.length + 1 + data.byteLength);
-      combined.set(header, 0);
-      combined[header.length] = 0; // Null separator
-      combined.set(new Uint8Array(data), header.length + 1);
-      this.ws.send(combined);
+    if (this.socket?.connected) {
+      this.socket.emit('audio:stream', {
+        data: data,
+        timestamp: Date.now(),
+      });
     }
   }
 
   sendSessionStart(data: { meetingId?: string }): void {
-    this.send('session:start', data);
+    if (this.socket?.connected) {
+      this.socket.emit('session:start', data);
+    }
   }
 
   sendSessionEnd(): void {
-    this.send('session:end', {});
+    if (this.socket?.connected) {
+      this.socket.emit('session:end', {});
+    }
   }
 
   sendChatMessage(text: string): void {
-    this.send('chat:message', { text });
+    if (this.socket?.connected) {
+      this.socket.emit('chat:message', { text });
+    }
   }
 
   disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
     }
     this.messageCallbacks = [];
   }

@@ -7,6 +7,7 @@ module.exports = {
     background: './src/background/service-worker.ts',
     content: './src/content/meet-detector.ts',
     popup: './src/popup/popup.ts',
+    offscreen: './src/offscreen/offscreen.ts',
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -38,6 +39,7 @@ module.exports = {
         { from: 'manifest.json', to: 'manifest.json' },
         { from: 'public/icons', to: 'icons' },
         { from: 'src/popup/popup.html', to: 'popup.html' },
+        { from: 'public/offscreen.html', to: 'offscreen.html' },
       ],
     }),
   ],

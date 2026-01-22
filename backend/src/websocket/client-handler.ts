@@ -1,11 +1,11 @@
 import type { Socket } from 'socket.io';
 import { sessionManager } from '../session/session-manager.js';
-import { GeminiLiveAPIClient } from '../gemini/live-api-client.js';
-import type { Session, Requirement } from '../types/index.js';
+import { GeminiMultimodalLiveClient } from '../gemini/multimodal-live-client.js';
+import type { Requirement } from '../types/index.js';
 
 interface ClientState {
   sessionId: string | null;
-  geminiClient: GeminiLiveAPIClient | null;
+  geminiClient: GeminiMultimodalLiveClient | null;
 }
 
 const clientStates = new Map<string, ClientState>();
@@ -20,7 +20,7 @@ export function handleClientConnection(socket: Socket, apiKey: string): void {
   });
 
   // Handle session start
-  socket.on('session:start', (data: { meetingId?: string }) => {
+  socket.on('session:start', async (data: { meetingId?: string }) => {
     const state = clientStates.get(socket.id);
     if (!state) return;
 
@@ -28,27 +28,44 @@ export function handleClientConnection(socket: Socket, apiKey: string): void {
     const session = sessionManager.createSession(data.meetingId);
     state.sessionId = session.id;
 
-    // Initialize Gemini client
-    state.geminiClient = new GeminiLiveAPIClient(apiKey);
+    // Initialize Gemini Multimodal Live client
+    state.geminiClient = new GeminiMultimodalLiveClient(apiKey);
 
     // Set up Gemini event handlers
     setupGeminiHandlers(socket, state.geminiClient, session.id);
 
-    // Start processing
-    state.geminiClient.startProcessing();
+    try {
+      // Connect to Gemini Live API
+      await state.geminiClient.connect();
 
-    // Notify client
-    socket.emit('session:connected', { sessionId: session.id });
-
-    console.log(`[WebSocket] Session started: ${session.id}`);
+      // Notify client
+      socket.emit('session:connected', { sessionId: session.id });
+      console.log(`[WebSocket] Session started with Gemini Live API: ${session.id}`);
+    } catch (error) {
+      console.error('[WebSocket] Failed to connect to Gemini Live API:', error);
+      socket.emit('error', {
+        message: 'Failed to connect to Gemini Live API',
+        code: 'GEMINI_CONNECTION_ERROR',
+      });
+    }
   });
 
   // Handle audio stream
+  let audioCount = 0;
   socket.on('audio:stream', (data: { data: ArrayBuffer; timestamp: number }) => {
     const state = clientStates.get(socket.id);
-    if (!state?.geminiClient) return;
+    if (!state?.geminiClient) {
+      console.log('[WebSocket] No gemini client for audio data');
+      return;
+    }
 
-    state.geminiClient.processAudioData(data.data);
+    audioCount++;
+    if (audioCount % 50 === 1) {
+      console.log(`[WebSocket] Received audio chunk #${audioCount}, size: ${data.data?.byteLength || 'undefined'}`);
+    }
+
+    // Send audio directly to Gemini Live API
+    state.geminiClient.sendAudio(data.data);
   });
 
   // Handle binary audio data
@@ -61,7 +78,7 @@ export function handleClientConnection(socket: Socket, apiKey: string): void {
         const audioData = data.subarray(headerEnd + 1);
         const state = clientStates.get(socket.id);
         if (state?.geminiClient) {
-          state.geminiClient.processAudioData(audioData.buffer as ArrayBuffer);
+          state.geminiClient.sendAudio(audioData.buffer as ArrayBuffer);
         }
       }
     }
@@ -74,8 +91,8 @@ export function handleClientConnection(socket: Socket, apiKey: string): void {
 
     console.log(`[WebSocket] Chat message: ${data.text}`);
 
-    // Process through Gemini
-    await state.geminiClient.processText(data.text);
+    // Send text to Gemini Live API
+    state.geminiClient.sendText(data.text);
   });
 
   // Handle generate request
@@ -105,8 +122,14 @@ export function handleClientConnection(socket: Socket, apiKey: string): void {
       sessionManager.updateRequirementStatus(state.sessionId!, r.id, 'generating');
     });
 
-    // Generate code
-    await state.geminiClient.generateCodeForRequirements(requirements);
+    // Send generate request to Gemini
+    const requirementsSummary = requirements
+      .map(r => `- ${r.componentType}: ${r.description}`)
+      .join('\n');
+
+    state.geminiClient.sendText(
+      `Please generate UI code for the following requirements:\n${requirementsSummary}`
+    );
   });
 
   // Handle session end
@@ -124,9 +147,19 @@ export function handleClientConnection(socket: Socket, apiKey: string): void {
 
 function setupGeminiHandlers(
   socket: Socket,
-  geminiClient: GeminiLiveAPIClient,
+  geminiClient: GeminiMultimodalLiveClient,
   sessionId: string
 ): void {
+  // Handle Gemini connection
+  geminiClient.on('connected', () => {
+    console.log(`[GeminiLive] Connected for session: ${sessionId}`);
+  });
+
+  geminiClient.on('disconnected', () => {
+    console.log(`[GeminiLive] Disconnected for session: ${sessionId}`);
+    socket.emit('gemini:disconnected');
+  });
+
   // Handle transcript updates
   geminiClient.on('transcript', (text, isFinal) => {
     sessionManager.addTranscript(sessionId, text, isFinal);
@@ -146,11 +179,16 @@ function setupGeminiHandlers(
 
   // Handle code generation complete
   geminiClient.on('codeComplete', (artifactId, code) => {
-    const state = clientStates.get(socket.id);
-    if (state?.sessionId) {
-      const pendingRequirements = sessionManager.getPendingRequirements(state.sessionId);
-      const requirementIds = pendingRequirements.map(r => r.id);
-      sessionManager.addArtifact(state.sessionId, code, 'react', requirementIds);
+    const state = Array.from(clientStates.entries()).find(
+      ([, s]) => s.geminiClient === geminiClient
+    );
+    if (state) {
+      const [, clientState] = state;
+      if (clientState.sessionId) {
+        const pendingRequirements = sessionManager.getPendingRequirements(clientState.sessionId);
+        const requirementIds = pendingRequirements.map(r => r.id);
+        sessionManager.addArtifact(clientState.sessionId, code, 'react', requirementIds);
+      }
     }
 
     socket.emit('artifact:update', { artifactId, code, isComplete: true });
@@ -169,7 +207,7 @@ function cleanupClient(socketId: string): void {
   const state = clientStates.get(socketId);
   if (state) {
     if (state.geminiClient) {
-      state.geminiClient.stopProcessing();
+      state.geminiClient.disconnect();
     }
     if (state.sessionId) {
       sessionManager.endSession(state.sessionId);
