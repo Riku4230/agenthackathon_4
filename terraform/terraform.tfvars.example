@@ -1,0 +1,15 @@
+# GCP Project ID
+project_id = "your-gcp-project-id"
+
+# GCP Region
+region = "us-central1"
+
+# Application name prefix
+app_name = "meet-artifact"
+
+# Gemini API Key (sensitive - use TF_VAR_gemini_api_key environment variable instead)
+# gemini_api_key = "your-api-key"
+
+# Docker image tags
+frontend_image_tag = "v1"
+backend_image_tag  = "v1"
